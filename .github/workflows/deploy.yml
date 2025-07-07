@@ -1,43 +1,62 @@
-name: Deploy React App to EC2
+name: Deploy React App to EC2 (Git Pull Strategy - Fix Subfolder)
 
 on:
   push:
     branches:
-      - main # Cambia 'main' por 'master' si esa es tu rama principal
+      - main # Se dispara con cada push a la rama 'main'
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest # Elige el runner de GitHub Actions
+    runs-on: ubuntu-latest # El runner de GitHub Actions
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4 # Clona tu repositorio en el runner
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4 # Configura Node.js en el runner
-        with:
-          node-version: '20' # Usa la versión de Node.js que necesites para tu app
-
-      - name: Install dependencies
-        run: npm install # Instala las dependencias de tu proyecto
-
-      - name: Build React App
-        run: npm run build # Compila tu aplicación React. Esto creará la carpeta 'dist/'
-
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v0.1.10 # Mantén esta versión
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v0.1.10 # Usamos esta acción para ejecutar comandos en EC2
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
-
-          # NUEVO PARÁMETRO: Intenta activar la sincronización/copia de esta manera
-          sync: true # <--- AÑADE ESTA LÍNEA
-
-          source: "dist/"
-          target: "/var/www/tu-app-react/"
-
           script: |
-            sudo rm -rf /var/www/tu-app-react/*
+            # --- Comandos ejecutados directamente en tu instancia EC2 ---
+
+            APP_DIR="/var/www/tu-app-react"
+            REPO_URL="https://github.com/PandaAkiraNakai/PNK.git" # URL de tu repositorio
+            CLONED_SUBDIR_NAME="PNK" # El nombre de la subcarpeta que Git insiste en crear
+
+            echo "Navegando al directorio de la aplicación: $APP_DIR"
+            # Crear el directorio base si no existe y asegurar permisos
+            sudo mkdir -p "$APP_DIR"
+            sudo chown -R ${{ secrets.EC2_USER }}:$(id -gn ${{ secrets.EC2_USER }}) "$APP_DIR"
+            cd "$APP_DIR"
+
+            # Verificar si el directorio es un repositorio Git (es decir, ya se clonó antes)
+            if [ -d ".git" ]; then # Chequeamos el .git directamente en APP_DIR
+              echo "Repositorio ya clonado en el directorio principal, haciendo pull..."
+              git pull origin main # Actualiza la rama main
+
+            else
+              echo "Repositorio NO clonado en el directorio principal, realizando clonación inicial..."
+              # Clona el repositorio en una subcarpeta temporal
+              git clone "$REPO_URL" "$CLONED_SUBDIR_NAME"
+
+              # Mueve el contenido de la subcarpeta clonada al directorio principal
+              echo "Moviendo contenido de /$CLONED_SUBDIR_NAME/ a /"
+              sudo mv "$CLONED_SUBDIR_NAME"/* . # Mueve todo desde la subcarpeta a la carpeta actual (APP_DIR)
+              sudo mv "$CLONED_SUBDIR_NAME"/.[!.]* . 2>/dev/null || : # Mueve archivos ocultos (como .git)
+                                                                       # 2>/dev/null || : para ignorar errores si no hay ocultos
+              
+              # Elimina la subcarpeta vacía después de mover su contenido
+              echo "Eliminando subcarpeta vacía: /$CLONED_SUBDIR_NAME/"
+              sudo rm -rf "$CLONED_SUBDIR_NAME"
+            fi
+
+            echo "Instalando dependencias (si hay cambios en package.json)..."
+            # Asegurarse de que estamos en el directorio correcto (APP_DIR)
+            npm install
+
+            echo "Construyendo la aplicación React..."
+            npm run build
+
+            echo "Reiniciando Nginx para servir la nueva versión..."
             sudo systemctl restart nginx
