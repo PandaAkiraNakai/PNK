@@ -1,4 +1,4 @@
-name: Deploy React App to EC2 (Git Pull with PNK subfolder)
+name: Deploy React App to EC2 (Git Pull con subcarpeta PNK)
 
 on:
   push:
