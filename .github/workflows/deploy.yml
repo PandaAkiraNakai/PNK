@@ -1,4 +1,4 @@
-name: Deploy React App to EC2 (Git Pull con subcarpeta PNK)
+name: Deploy React App to EC2 (Directamente en /var/www)
 
 on:
   push:
@@ -20,33 +20,30 @@ jobs:
           script: |
             # --- Comandos ejecutados directamente en tu instancia EC2 ---
 
-            BASE_APP_DIR="/var/www/tu-app-react"
-            APP_REPO_DIR="$BASE_APP_DIR/PNK" # La ruta completa donde estará el repositorio Git
+            APP_DIR="/var/www" # ¡La ruta directa a /var/www/!
 
-            echo "Asegurando que el directorio base '$BASE_APP_DIR' exista..."
-            sudo mkdir -p "$BASE_APP_DIR"
-            # Asegura que el usuario que ejecuta el script tenga permisos sobre el directorio base
-            sudo chown -R ${{ secrets.EC2_USER }}:$(id -gn ${{ secrets.EC2_USER }}) "$BASE_APP_DIR"
+            echo "Asegurando que el directorio '$APP_DIR' exista y tenga permisos..."
+            sudo mkdir -p "$APP_DIR"
+            # Asegura que el usuario que ejecuta el script tenga permisos sobre el directorio
+            sudo chown -R ${{ secrets.EC2_USER }}:$(id -gn ${{ secrets.EC2_USER }}) "$APP_DIR"
+            cd "$APP_DIR"
 
-            # Verificar si el repositorio ya ha sido clonado en la subcarpeta 'PNK'
-            if [ -d "$APP_REPO_DIR/.git" ]; then
-              echo "Repositorio PNK ya clonado, navegando a '$APP_REPO_DIR' y haciendo pull..."
-              cd "$APP_REPO_DIR"
+            # Verificar si el repositorio ya ha sido clonado
+            if [ -d ".git" ]; then # Busca el .git directamente en el directorio actual (/var/www/)
+              echo "Repositorio ya clonado, haciendo pull..."
               git pull origin main # Actualiza la rama main
 
             else
-              echo "Repositorio PNK NO clonado, realizando clonación inicial en la subcarpeta..."
-              cd "$BASE_APP_DIR" # Cambia al directorio base para clonar
-              git clone https://github.com/PandaAkiraNakai/PNK.git PNK # Clona el repositorio en la subcarpeta PNK
-              echo "Clonación inicial completa en: '$APP_REPO_DIR'"
-              cd "$APP_REPO_DIR" # Navega a la subcarpeta recién clonada para los siguientes comandos
+              echo "Repositorio NO clonado, realizando clonación inicial..."
+              git clone https://github.com/PandaAkiraNakai/PNK.git . # Clona directamente en el directorio actual (/var/www/)
+              echo "Clonación inicial completa en: '$APP_DIR'"
             fi
 
-            echo "Instalando dependencias (si hay cambios en package.json) en '$APP_REPO_DIR'..."
-            npm install # Se ejecuta dentro de $APP_REPO_DIR
+            echo "Instalando dependencias (si hay cambios en package.json)..."
+            npm install # Se ejecuta dentro de /var/www/
 
-            echo "Construyendo la aplicación React en '$APP_REPO_DIR'..."
-            npm run build # Se ejecuta dentro de $APP_REPO_DIR, creando 'dist' en '$APP_REPO_DIR/dist'
+            echo "Construyendo la aplicación React..."
+            npm run build # Se ejecuta dentro de /var/www/, creando 'dist' en '/var/www/dist'
 
             echo "Reiniciando Nginx para servir la nueva versión..."
             sudo systemctl restart nginx
