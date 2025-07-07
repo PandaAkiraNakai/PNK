@@ -1,0 +1,60 @@
+name: Deploy React App to EC2
+
+on:
+  push:
+    branches:
+      - main # <--- CAMBIA ESTO: La rama principal de tu repositorio (ej. master, main, production)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest # Usaremos un runner gestionado por GitHub
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4 # Obtiene el código de tu repositorio
+
+    - name: Set up Node.js environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20' # <--- CAMBIA ESTO: Usa la versión de Node.js que requiere tu proyecto (ej. 18, 20, 22)
+        cache: 'npm'       # Cacha las dependencias de npm para compilaciones más rápidas
+
+    - name: Install dependencies
+      run: npm install --legacy-peer-deps # Instala las dependencias de tu proyecto.
+                                          # --legacy-peer-deps puede ayudar con conflictos de versiones.
+
+    - name: Build React App
+      run: npm run build # Ejecuta el script de construcción de tu aplicación React
+
+    - name: Deploy to EC2
+      uses: appleboy/ssh-action@v1.0.3 # Acción de terceros para conectarse via SSH
+      with:
+        host: ${{ secrets.EC2_HOST }}      # Usa el secreto de GitHub para la IP del EC2
+        username: ${{ secrets.EC2_USER }}  # Usa el secreto de GitHub para el usuario (ec2-user o deployuser)
+        key: ${{ secrets.EC2_SSH_KEY }}    # Usa el secreto de GitHub para la clave privada SSH
+        script: |
+          # --- Comandos a ejecutar en tu instancia EC2 ---
+          # (Ejecutados como el usuario definido en EC2_USER)
+
+          # 1. Asegúrate de estar en el directorio correcto
+          # El usuario SSH se conectará a su directorio home (~).
+          # Luego, usaremos 'sudo' para operar en /var/www/mi-app-react.
+          # Si tu usuario de despliegue no tiene sudo, ajusta los permisos de /var/www/mi-app-react
+          # para que el usuario pueda escribir sin sudo.
+
+          # 2. Elimina los archivos viejos de la aplicación
+          # Esto asegura que no queden archivos de versiones anteriores.
+          sudo rm -rf /var/www/mi-app-react/*
+
+          # 3. Copia los nuevos archivos de la aplicación
+          # El directorio 'dist' es creado por 'npm run build' en el runner de GitHub Actions.
+          # Lo copiamos desde el runner al EC2.
+          # CUIDADO: La ruta 'dist/*' se refiere al contenido de la carpeta 'dist' del runner de GitHub.
+          # La ruta '/var/www/mi-app-react/' es la de tu EC2.
+          sudo cp -r /home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/dist/* /var/www/mi-app-react/
+
+          # Si tu build crea la carpeta 'build' en lugar de 'dist', cambia 'dist/*' por 'build/*'
+          # Si tu carpeta raíz de Nginx en EC2 es /var/www/mi-app-react/build, cambia el destino a /var/www/mi-app-react/build/
+
+          # 4. Reinicia Nginx para servir la nueva versión
+          sudo systemctl restart nginx
