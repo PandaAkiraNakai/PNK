@@ -1,4 +1,4 @@
-name: Deploy React App to EC2 (Git Pull Strategy - Fix Subfolder)
+name: Deploy React App to EC2 (Git Pull with PNK subfolder)
 
 on:
   push:
@@ -20,43 +20,33 @@ jobs:
           script: |
             # --- Comandos ejecutados directamente en tu instancia EC2 ---
 
-            APP_DIR="/var/www/tu-app-react"
-            REPO_URL="https://github.com/PandaAkiraNakai/PNK.git" # URL de tu repositorio
-            CLONED_SUBDIR_NAME="PNK" # El nombre de la subcarpeta que Git insiste en crear
+            BASE_APP_DIR="/var/www/tu-app-react"
+            APP_REPO_DIR="$BASE_APP_DIR/PNK" # La ruta completa donde estará el repositorio Git
 
-            echo "Navegando al directorio de la aplicación: $APP_DIR"
-            # Crear el directorio base si no existe y asegurar permisos
-            sudo mkdir -p "$APP_DIR"
-            sudo chown -R ${{ secrets.EC2_USER }}:$(id -gn ${{ secrets.EC2_USER }}) "$APP_DIR"
-            cd "$APP_DIR"
+            echo "Asegurando que el directorio base '$BASE_APP_DIR' exista..."
+            sudo mkdir -p "$BASE_APP_DIR"
+            # Asegura que el usuario que ejecuta el script tenga permisos sobre el directorio base
+            sudo chown -R ${{ secrets.EC2_USER }}:$(id -gn ${{ secrets.EC2_USER }}) "$BASE_APP_DIR"
 
-            # Verificar si el directorio es un repositorio Git (es decir, ya se clonó antes)
-            if [ -d ".git" ]; then # Chequeamos el .git directamente en APP_DIR
-              echo "Repositorio ya clonado en el directorio principal, haciendo pull..."
+            # Verificar si el repositorio ya ha sido clonado en la subcarpeta 'PNK'
+            if [ -d "$APP_REPO_DIR/.git" ]; then
+              echo "Repositorio PNK ya clonado, navegando a '$APP_REPO_DIR' y haciendo pull..."
+              cd "$APP_REPO_DIR"
               git pull origin main # Actualiza la rama main
 
             else
-              echo "Repositorio NO clonado en el directorio principal, realizando clonación inicial..."
-              # Clona el repositorio en una subcarpeta temporal
-              git clone "$REPO_URL" "$CLONED_SUBDIR_NAME"
-
-              # Mueve el contenido de la subcarpeta clonada al directorio principal
-              echo "Moviendo contenido de /$CLONED_SUBDIR_NAME/ a /"
-              sudo mv "$CLONED_SUBDIR_NAME"/* . # Mueve todo desde la subcarpeta a la carpeta actual (APP_DIR)
-              sudo mv "$CLONED_SUBDIR_NAME"/.[!.]* . 2>/dev/null || : # Mueve archivos ocultos (como .git)
-                                                                       # 2>/dev/null || : para ignorar errores si no hay ocultos
-              
-              # Elimina la subcarpeta vacía después de mover su contenido
-              echo "Eliminando subcarpeta vacía: /$CLONED_SUBDIR_NAME/"
-              sudo rm -rf "$CLONED_SUBDIR_NAME"
+              echo "Repositorio PNK NO clonado, realizando clonación inicial en la subcarpeta..."
+              cd "$BASE_APP_DIR" # Cambia al directorio base para clonar
+              git clone https://github.com/PandaAkiraNakai/PNK.git PNK # Clona el repositorio en la subcarpeta PNK
+              echo "Clonación inicial completa en: '$APP_REPO_DIR'"
+              cd "$APP_REPO_DIR" # Navega a la subcarpeta recién clonada para los siguientes comandos
             fi
 
-            echo "Instalando dependencias (si hay cambios en package.json)..."
-            # Asegurarse de que estamos en el directorio correcto (APP_DIR)
-            npm install
+            echo "Instalando dependencias (si hay cambios en package.json) en '$APP_REPO_DIR'..."
+            npm install # Se ejecuta dentro de $APP_REPO_DIR
 
-            echo "Construyendo la aplicación React..."
-            npm run build
+            echo "Construyendo la aplicación React en '$APP_REPO_DIR'..."
+            npm run build # Se ejecuta dentro de $APP_REPO_DIR, creando 'dist' en '$APP_REPO_DIR/dist'
 
             echo "Reiniciando Nginx para servir la nueva versión..."
             sudo systemctl restart nginx
