@@ -25,25 +25,19 @@ jobs:
         run: npm run build # Compila tu aplicación React. Esto creará la carpeta 'dist/'
 
       - name: Deploy to EC2
-        # *** CAMBIO IMPORTANTE AQUÍ: CAMBIAMOS LA VERSIÓN DE LA ACCIÓN ***
-        uses: appleboy/ssh-action@v0.1.10 # Esta versión soporta 'source' y 'target' para SCP.
+        uses: appleboy/ssh-action@v0.1.10 # Mantén esta versión
         with:
-          host: ${{ secrets.EC2_HOST }} # IP pública de tu instancia EC2 (desde los secretos de GitHub)
-          username: ${{ secrets.EC2_USER }} # Usuario SSH de tu EC2 (ej. ec2-user) (desde los secretos de GitHub)
-          key: ${{ secrets.EC2_SSH_KEY }} # Clave SSH privada (desde los secretos de GitHub)
-          port: 22 # Puerto SSH, por defecto es 22
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
 
-          # PARÁMETROS CLAVE PARA LA TRANSFERENCIA DE ARCHIVOS (SCP)
-          source: "dist/" # Ruta de la carpeta compilada en el runner de GitHub Actions
-          target: "/var/www/tu-app-react/" # Ruta de destino en tu instancia EC2
+          # NUEVO PARÁMETRO: Intenta activar la sincronización/copia de esta manera
+          sync: true # <--- AÑADE ESTA LÍNEA
 
-          # COMANDOS A EJECUTAR EN TU INSTANCIA EC2 DESPUÉS DE LA TRANSFERENCIA
+          source: "dist/"
+          target: "/var/www/tu-app-react/"
+
           script: |
-            # 1. Elimina los archivos viejos de la aplicación en EC2
             sudo rm -rf /var/www/tu-app-react/*
-
-            # Los archivos de la carpeta 'dist' ya fueron copiados por los parámetros 'source' y 'target'.
-            # NO NECESITAS UN 'sudo cp -r' AQUÍ.
-
-            # 2. Reinicia Nginx para servir la nueva versión
             sudo systemctl restart nginx
